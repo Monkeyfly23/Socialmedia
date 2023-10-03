@@ -1,0 +1,233 @@
+from flask import Flask, render_template, request, redirect, session
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+
+app = Flask(__name__)
+app.secret_key = "your_secret_key"
+
+# Configure SQLAlchemy
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///social_media_app.db'
+db = SQLAlchemy(app)
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password = db.Column(db.String(100), nullable=False)
+    profile = db.relationship('Profile', uselist=False, backref='user')
+    stories = db.relationship('Story', backref='user', lazy=True)
+    likes = db.relationship('Like', backref='user', lazy=True)
+    comments = db.relationship('Comment', backref='user', lazy=True)
+
+    def __init__(self, username, password):
+        self.username = username
+        self.password = generate_password_hash(password)
+
+class Profile(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    fullname = db.Column(db.String(100), nullable=False)
+    bio = db.Column(db.String(255))
+
+class Story(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    caption = db.Column(db.String(255), nullable=False)
+    likes = db.relationship('Like', backref='story', lazy=True)
+    comments = db.relationship('Comment', backref='story', lazy=True)
+
+class Like(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    story_id = db.Column(db.Integer, db.ForeignKey('story.id'), nullable=False)
+
+class Comment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    story_id = db.Column(db.Integer, db.ForeignKey('story.id'), nullable=False)
+    text = db.Column(db.String(255), nullable=False)
+
+db.create_all()
+
+@app.route('/')
+def home():
+    if 'user_id' in session:
+        user =        user = User.query.get(session['user_id'])
+        stories = Story.query.all()
+        return render_template('home.html', user=user, stories=stories)
+    else:
+        return redirect('/login')
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        if User.query.filter_by(username=username).first():
+            return "Username already exists!"
+        
+        new_user = User(username, password)
+        db.session.add(new_user)
+        db.session.commit()
+        
+        session['user_id'] = new_user.id
+        return redirect('/profile')
+    
+    return render_template('signup.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if not user or not check_password_hash(user.password, password):
+            return "Invalid username or password"
+        
+        session['user_id'] = user.id
+        return redirect('/')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    return redirect('/login')
+
+@app.route('/profile', methods=['GET', 'POST'])
+def profile():
+    if 'user_id' in session:
+        user = User.query.get(session['user_id'])
+        
+        if request.method == 'POST':
+            fullname = request.form['fullname']
+            bio = request.form['bio']
+            
+            if user.profile:
+                user.profile.fullname = fullname
+                user.profile.bio = bio
+            else:
+                profile = Profile(user_id=user.id, fullname=fullname, bio=bio)
+                db.session.add(profile)
+            
+            db.session.commit()
+        
+        return render_template('profile.html', user=user)
+    else:
+        return redirect('/login')
+
+@app.route('/like/<int:story_id>')
+def like(story_id):
+    if 'user_id' in session:
+        user_id = session['user_id']
+        like = Like.query.filter_by(user_id=user_id, story_id=story_id).first()
+        
+        if like:
+            db.session.delete(like)
+        else:
+            new_like = Like(user_id=user_id, story_id=story_id)
+            db.session.add(new_like)
+                user = User.query.get(session['user_id'])
+        stories = Story.query.all()
+        return render_template('home.html', user=user, stories=stories)
+    else:
+        return redirect('/login')
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        if User.query.filter_by(username=username).first():
+            return "Username already exists!"
+        
+        new_user = User(username, password)
+        db.session.add(new_user)
+        db.session.commit()
+        
+        session['user_id'] = new_user.id
+        return redirect('/profile')
+    
+    return render_template('signup.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if not user or not check_password_hash(user.password, password):
+            return "Invalid username or password"
+        
+        session['user_id'] = user.id
+        return redirect('/')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    return redirect('/login')
+
+@app.route('/profile', methods=['GET', 'POST'])
+def profile():
+    if 'user_id' in session:
+        user = User.query.get(session['user_id'])
+        
+        if request.method == 'POST':
+            fullname = request.form['fullname']
+            bio = request.form['bio']
+            
+            if user.profile:
+                user.profile.fullname = fullname
+                user.profile.bio = bio
+            else:
+                profile = Profile(user_id=user.id, fullname=fullname, bio=bio)
+                db.session.add(profile)
+            
+            db.session.commit()
+        
+        return render_template('profile.html', user=user)
+    else:
+        return redirect('/login')
+
+@app.route('/like/<int:story_id>')
+def like(story_id):
+    if 'user_id' in session:
+        user_id = session['user_id']
+        like = Like.query.filter_by(user_id=user_id, story_id=story_id).first()
+        
+        if like:
+            db.session.delete(like)
+        else:
+            new_like = Like(user_id=user_id, story_id=story_id)
+            db.session.add(new_like)
+                db.session.commit()
+        
+        return redirect('/')
+    else:
+        return redirect('/login')
+
+@app.route('/comment/<int:story_id>', methods=['POST'])
+def comment(story_id):
+    if 'user_id' in session:
+        user_id = session['user_id']
+        text = request.form['text']
+        
+        new_comment = Comment(user_id=user_id, story_id=story_id, text=text)
+        db.session.add(new_comment)
+        db.session.commit()
+        
+        return redirect('/')
+    else:
+        return redirect('/login')
+
+if __name__ == '__main__':
+    app.run()
+       
+       
